@@ -1,0 +1,45 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Public read for profile images, project media, and blog thumbnails
+    match /profile/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    match /projects/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    match /blog/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    match /documents/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType == 'application/pdf';
+    }
+
+    match /branding/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated() &&
+        request.resource.size < 2 * 1024 * 1024;
+    }
+
+  }
+}

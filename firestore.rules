@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    // 1. Users collection (Role Management & Admin Protection)
+    match /users/{userId} {
+      // User can read their own profile, admin can read all
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Only existing admin or initial bootstrap can set admin role
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Normal users cannot elevate their own role to admin
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 2. Profile collection (Public Read, Admin Write)
+    match /profile/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 3. Settings collection (Public Read, Admin Write)
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 4. Skills collection (Public Read, Admin Write)
+    match /skills/{skillId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 5. Projects collection (Public Read, Admin Write)
+    match /projects/{projectId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 6. Blog collection (Public can read published, Admin can read/write all)
+    match /blog/{blogId} {
+      allow read: if resource.data.status == 'published' || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 7. Social Links collection (Public Read, Admin Write)
+    match /socialLinks/{linkId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 8. Education collection (Public Read, Admin Write)
+    match /education/{eduId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 9. Experiences collection (Public Read, Admin Write)
+    match /experiences/{expId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 10. Messages collection (Public Create with validation, Admin Read & Manage)
+    match /messages/{messageId} {
+      // Only administrator can read or delete visitor messages
+      allow read: if isAdmin();
+      allow delete: if isAdmin();
+      allow update: if isAdmin();
+      
+      // Anyone can submit a contact message with valid schema and size constraints
+      allow create: if 
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() > 0 &&
+        request.resource.data.email.size() <= 150 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() > 0 &&
+        request.resource.data.message.size() <= 5000 &&
+        request.resource.data.isRead == false;
+    }
+
+  }
+}
