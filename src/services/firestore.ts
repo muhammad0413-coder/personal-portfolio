@@ -12,9 +12,8 @@ import { db, isFirebaseConfigured } from './firebase';
 import { PersonalProfile, PersonalDocument } from '../types';
 import { defaultProfile, defaultDocuments } from './seedData';
 
-const CACHE_KEYS = {
-  PROFILE: 'cache_data_pribadi_profile',
-  DOCUMENTS: 'cache_data_pribadi_documents'
+const getCacheKey = (type: 'profile' | 'documents', userId: string) => {
+  return `cache_data_pribadi_${type}_${userId || 'default'}`;
 };
 
 const getCached = <T>(key: string, fallback: T): T => {
@@ -34,107 +33,167 @@ const setCached = <T>(key: string, data: T): void => {
   }
 };
 
-// ================= PERSONAL PROFILE =================
-export const getPersonalProfile = async (): Promise<PersonalProfile> => {
-  if (isFirebaseConfigured() && db) {
+// ================= PERSONAL PROFILE (ISOLATED PER USER) =================
+export const getPersonalProfile = async (
+  userId: string,
+  userDisplayName?: string | null,
+  userEmail?: string | null
+): Promise<PersonalProfile> => {
+  const fallback: PersonalProfile = {
+    ...defaultProfile,
+    userId,
+    fullName: userDisplayName || defaultProfile.fullName,
+    email: userEmail || defaultProfile.email,
+  };
+
+  if (isFirebaseConfigured() && db && userId) {
     try {
-      const snap = await getDoc(doc(db, 'personal_profile', 'main'));
+      // Path: users/{userId}/profile/main
+      const snap = await getDoc(doc(db, 'users', userId, 'profile', 'main'));
       if (snap.exists()) {
         const data = snap.data() as PersonalProfile;
-        setCached(CACHE_KEYS.PROFILE, data);
+        setCached(getCacheKey('profile', userId), data);
         return data;
+      } else {
+        // First time initialization in Firestore
+        await setDoc(doc(db, 'users', userId, 'profile', 'main'), fallback);
+        setCached(getCacheKey('profile', userId), fallback);
+        return fallback;
       }
     } catch (err) {
-      console.warn('Firestore profile notice:', err);
+      console.warn('Firestore profile fetch error, fallback to cache:', err);
     }
   }
-  return getCached(CACHE_KEYS.PROFILE, defaultProfile);
+
+  return getCached(getCacheKey('profile', userId), fallback);
 };
 
-export const updatePersonalProfile = async (data: Partial<PersonalProfile>): Promise<void> => {
-  const current = await getPersonalProfile();
+export const updatePersonalProfile = async (
+  userId: string,
+  data: Partial<PersonalProfile>
+): Promise<void> => {
+  const current = await getPersonalProfile(userId);
   const updated: PersonalProfile = {
     ...current,
     ...data,
+    userId,
     updatedAt: new Date().toISOString()
   };
-  setCached(CACHE_KEYS.PROFILE, updated);
 
-  if (isFirebaseConfigured() && db) {
-    await setDoc(doc(db, 'personal_profile', 'main'), updated, { merge: true });
+  setCached(getCacheKey('profile', userId), updated);
+
+  if (isFirebaseConfigured() && db && userId) {
+    await setDoc(doc(db, 'users', userId, 'profile', 'main'), updated, { merge: true });
   }
 };
 
-// ================= PERSONAL DOCUMENTS (KTP, KK, AKTA, DLL) =================
-export const getPersonalDocuments = async (): Promise<PersonalDocument[]> => {
-  if (isFirebaseConfigured() && db) {
+// ================= PERSONAL DOCUMENTS (ISOLATED PER USER) =================
+export const getPersonalDocuments = async (userId: string): Promise<PersonalDocument[]> => {
+  // Personalized template if new user
+  const initialDocs: PersonalDocument[] = defaultDocuments.map((d) => ({
+    ...d,
+    id: `${d.id}-${userId}`,
+    userId
+  }));
+
+  if (isFirebaseConfigured() && db && userId) {
     try {
-      const q = query(collection(db, 'personal_documents'), orderBy('uploadedAt', 'desc'));
+      // Path: users/{userId}/documents
+      const docsRef = collection(db, 'users', userId, 'documents');
+      const q = query(docsRef, orderBy('uploadedAt', 'desc'));
       const snap = await getDocs(q);
+
       if (!snap.empty) {
         const list: PersonalDocument[] = [];
-        snap.forEach((d) => list.push({ ...d.data(), id: d.id } as PersonalDocument));
-        setCached(CACHE_KEYS.DOCUMENTS, list);
+        snap.forEach((d) => list.push({ ...d.data(), id: d.id, userId } as PersonalDocument));
+        setCached(getCacheKey('documents', userId), list);
         return list;
+      } else {
+        // Seed initial documents for this new user so they have a starting template
+        for (const d of initialDocs) {
+          await setDoc(doc(db, 'users', userId, 'documents', d.id), d);
+        }
+        setCached(getCacheKey('documents', userId), initialDocs);
+        return initialDocs;
       }
     } catch (err) {
-      console.warn('Firestore documents notice:', err);
+      console.warn('Firestore documents fetch notice, using cache:', err);
     }
   }
-  return getCached(CACHE_KEYS.DOCUMENTS, defaultDocuments);
+
+  return getCached(getCacheKey('documents', userId), initialDocs);
 };
 
 export const savePersonalDocument = async (
+  userId: string,
   docData: Omit<PersonalDocument, 'id'> & { id?: string }
 ): Promise<string> => {
-  let list = await getPersonalDocuments();
+  let list = await getPersonalDocuments(userId);
   let id = docData.id;
 
   if (id) {
-    list = list.map((d) => (d.id === id ? ({ ...d, ...docData } as PersonalDocument) : d));
+    list = list.map((d) => (d.id === id ? ({ ...d, ...docData, userId } as PersonalDocument) : d));
   } else {
     id = `doc-${Date.now()}`;
-    list.unshift({ ...docData, id } as PersonalDocument);
+    list.unshift({ ...docData, id, userId } as PersonalDocument);
   }
-  setCached(CACHE_KEYS.DOCUMENTS, list);
 
-  if (isFirebaseConfigured() && db) {
-    const docRef = doc(db, 'personal_documents', id);
-    await setDoc(docRef, { ...docData, id }, { merge: true });
+  setCached(getCacheKey('documents', userId), list);
+
+  if (isFirebaseConfigured() && db && userId) {
+    const docRef = doc(db, 'users', userId, 'documents', id);
+    await setDoc(docRef, { ...docData, id, userId }, { merge: true });
   }
+
   return id;
 };
 
-export const deletePersonalDocument = async (id: string): Promise<void> => {
-  const list = (await getPersonalDocuments()).filter((d) => d.id !== id);
-  setCached(CACHE_KEYS.DOCUMENTS, list);
+export const deletePersonalDocument = async (userId: string, id: string): Promise<void> => {
+  const list = (await getPersonalDocuments(userId)).filter((d) => d.id !== id);
+  setCached(getCacheKey('documents', userId), list);
 
-  if (isFirebaseConfigured() && db) {
-    await deleteDoc(doc(db, 'personal_documents', id));
+  if (isFirebaseConfigured() && db && userId) {
+    await deleteDoc(doc(db, 'users', userId, 'documents', id));
   }
 };
 
 // ================= 1-CLICK SEED PERSONAL DATA TO FIRESTORE =================
-export const seedPersonalDataToFirestore = async (): Promise<{ success: boolean; message: string }> => {
+export const seedPersonalDataToFirestore = async (
+  userId: string,
+  displayName?: string | null,
+  email?: string | null
+): Promise<{ success: boolean; message: string }> => {
   if (!isFirebaseConfigured() || !db) {
     return {
       success: false,
-      message: 'Kredensial Firebase belum terkonfigurasi. Masukkan kredensial di .env.'
+      message: 'Kredensial Firebase belum terkonfigurasi. Periksa file .env.'
     };
   }
 
   try {
-    // 1. Simpan Profil Pribadi
-    await setDoc(doc(db, 'personal_profile', 'main'), defaultProfile, { merge: true });
+    const targetProfile: PersonalProfile = {
+      ...defaultProfile,
+      userId,
+      fullName: displayName || defaultProfile.fullName,
+      email: email || defaultProfile.email,
+    };
 
-    // 2. Simpan Seluruh Dokumen Awal (KTP, KK, Ijazah, SIM, NPWP, BPJS, dll.)
+    // 1. Simpan Profil Pribadi di users/{userId}/profile/main
+    await setDoc(doc(db, 'users', userId, 'profile', 'main'), targetProfile, { merge: true });
+
+    // 2. Simpan Dokumen Awal di users/{userId}/documents/{docId}
     for (const d of defaultDocuments) {
-      await setDoc(doc(db, 'personal_documents', d.id), d, { merge: true });
+      const docWithUser: PersonalDocument = {
+        ...d,
+        id: `${d.id}-${userId}`,
+        userId
+      };
+      await setDoc(doc(db, 'users', userId, 'documents', docWithUser.id), docWithUser, { merge: true });
     }
 
     return {
       success: true,
-      message: 'Seluruh arsip data pribadi & dokumen (KTP, KK, Ijazah, SIM, NPWP) berhasil disinkronkan ke Cloud Firestore!'
+      message: `Data pribadi akun (${email || displayName || userId}) berhasil disinkronkan ke Cloud Firestore!`
     };
   } catch (error: any) {
     console.error('Error seeding data:', error);

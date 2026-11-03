@@ -9,6 +9,7 @@ import {
   seedPersonalDataToFirestore
 } from '../services/firestore';
 import { defaultProfile, defaultDocuments } from '../services/seedData';
+import { useAuth } from './AuthContext';
 
 interface DataContextType {
   profile: PersonalProfile;
@@ -24,15 +25,30 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [profile, setProfile] = useState<PersonalProfile>(defaultProfile);
-  const [documents, setDocuments] = useState<PersonalDocument[]>(defaultDocuments);
+  const { currentUser } = useAuth();
+  const userId = currentUser?.uid || 'guest_user';
+  const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Pengguna';
+  const email = currentUser?.email || 'user@example.com';
+
+  const [profile, setProfile] = useState<PersonalProfile>(() => ({
+    ...defaultProfile,
+    userId,
+    fullName: displayName,
+    email
+  }));
+  const [documents, setDocuments] = useState<PersonalDocument[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   const refreshData = useCallback(async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     try {
       const [prof, docs] = await Promise.all([
-        getPersonalProfile(),
-        getPersonalDocuments()
+        getPersonalProfile(userId, displayName, email),
+        getPersonalDocuments(userId)
       ]);
       setProfile(prof);
       setDocuments(docs);
@@ -41,30 +57,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId, displayName, email]);
 
   useEffect(() => {
     refreshData();
   }, [refreshData]);
 
   const updateProfile = async (data: Partial<PersonalProfile>) => {
-    await updateProfileApi(data);
+    await updateProfileApi(userId, data);
     setProfile((prev) => ({ ...prev, ...data }));
   };
 
   const saveDocument = async (docData: Omit<PersonalDocument, 'id'> & { id?: string }) => {
-    const id = await saveDocApi(docData);
+    const id = await saveDocApi(userId, docData);
     await refreshData();
     return id;
   };
 
   const deleteDocument = async (id: string) => {
-    await deleteDocApi(id);
+    await deleteDocApi(userId, id);
     setDocuments((prev) => prev.filter((d) => d.id !== id));
   };
 
   const seedDatabase = async () => {
-    const res = await seedPersonalDataToFirestore();
+    const res = await seedPersonalDataToFirestore(userId, displayName, email);
     if (res.success) {
       await refreshData();
     }

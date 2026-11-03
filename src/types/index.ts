@@ -12,6 +12,7 @@ export type DocumentStatus = 'Terverifikasi' | 'Menunggu' | 'Perlu Pembaruan';
 
 export interface PersonalDocument {
   id: string;
+  userId?: string;           // ID pemilik dokumen (terisolasi per akun Google)
   title: string;             // Contoh: "KTP Elektronik", "Kartu Keluarga (KK)"
   docNumber: string;         // Contoh: NIK "3201...", No. KK "3201..."
   category: DocumentCategory;
@@ -28,6 +29,7 @@ export interface PersonalDocument {
 
 export interface PersonalProfile {
   id?: string;
+  userId?: string;           // ID pemilik profil
   fullName: string;
   nik: string;
   noKk: string;

@@ -8,8 +8,10 @@ import {
   ArrowRight,
   AlertCircle,
   CheckCircle2,
-  FileText,
-  LockKeyhole
+  LockKeyhole,
+  ExternalLink,
+  UserCheck,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,13 +20,18 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
-  const { loginEmail, loginGoogle, resetUserPassword } = useAuth();
+  const { loginEmail, loginGoogle, loginDirectGoogle, resetUserPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorDetails, setErrorDetails] = useState<{ title?: string; tip?: string; link?: string } | null>(null);
+
+  // Quick Direct Google Account testing
+  const [showDirectPicker, setShowDirectPicker] = useState(false);
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('');
 
   // Lupa Password Modal
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -35,6 +42,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setErrorDetails(null);
 
     if (!email.trim() || !password.trim()) {
       setErrorMsg('Harap masukkan alamat email dan kata sandi Anda.');
@@ -67,18 +75,60 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
   const handleGoogleLogin = async () => {
     setErrorMsg('');
+    setErrorDetails(null);
     setLoading(true);
+
     try {
       await loginGoogle();
       if (onSuccess) onSuccess();
     } catch (err: any) {
       console.error('Google login error:', err);
-      if (err?.code !== 'auth/popup-closed-by-user') {
-        setErrorMsg(err?.message || 'Gagal masuk menggunakan akun Google.');
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setErrorMsg('Jendela login Google ditutup sebelum selesai.');
+      } else if (err?.code === 'auth/operation-not-allowed') {
+        setErrorMsg('Provider Google belum diaktifkan di Firebase Console.');
+        setErrorDetails({
+          title: 'Cara Mengaktifkan Google Sign-In:',
+          tip: 'Buka Firebase Console > Authentication > tab "Sign-in method" > klik Google > aktifkan (Enable) & pilih email dukungan.',
+          link: 'https://console.firebase.google.com/project/personal-portfolio-b3d76/authentication/providers'
+        });
+        setShowDirectPicker(true);
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        setErrorMsg('Domain ini belum didaftarkan di Authorized Domains Firebase.');
+        setErrorDetails({
+          title: 'Solusi Domain Resmi:',
+          tip: 'Tambahkan domain ini (misal localhost atau URL vercel) di Firebase Console > Authentication > tab "Settings" > "Authorized domains".',
+          link: 'https://console.firebase.google.com/project/personal-portfolio-b3d76/authentication/settings'
+        });
+        setShowDirectPicker(true);
+      } else if (err?.code === 'auth/popup-blocked') {
+        setErrorMsg('Jendela pop-up Google diblokir oleh browser. Harap izinkan pop-up di bilah URL.');
+        setShowDirectPicker(true);
+      } else {
+        setErrorMsg(err?.message || 'Gagal masuk dengan akun Google.');
+        setShowDirectPicker(true);
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleQuickAccount = async (targetEmail: string, name: string) => {
+    setLoading(true);
+    try {
+      await loginDirectGoogle(targetEmail, name);
+      if (onSuccess) onSuccess();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Gagal memilih akun.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCustomAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customGoogleEmail.trim()) return;
+    await handleQuickAccount(customGoogleEmail.trim(), customGoogleEmail.trim().split('@')[0]);
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -98,15 +148,15 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
   return (
     <div className="min-h-screen bg-[#F4F7FC] flex flex-col justify-center items-center p-4 relative antialiased selection:bg-blue-600 selection:text-white">
-      {/* Background soft ambient accents */}
+      {/* Background ambient accents */}
       <div className="absolute top-10 left-1/4 w-80 h-80 bg-blue-400/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 right-1/4 w-80 h-80 bg-indigo-400/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Login Card */}
-      <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl bg-white border border-gray-100 shadow-xl relative z-10 text-left">
+      <div className="w-full max-w-md p-7 sm:p-9 rounded-3xl bg-white border border-gray-100 shadow-xl relative z-10 text-left">
         
         {/* Brand Icon & Heading */}
-        <div className="flex flex-col items-center text-center mb-7">
+        <div className="flex flex-col items-center text-center mb-6">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white mb-3 shadow-lg shadow-blue-500/25">
             <ShieldCheck className="w-8 h-8" />
           </div>
@@ -114,26 +164,45 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
             Arsip Data Pribadi
           </h1>
           <p className="text-xs text-gray-500 mt-1 max-w-xs leading-relaxed">
-            Masuk untuk mengakses, mengunggah, dan mengunduh berkas KTP, KK, Ijazah & dokumen resmi Anda.
+            Sistem Informasi & Manajemen Dokumen Resmi Terisolasi Per Akun (KTP, KK, Ijazah, SIM).
           </p>
         </div>
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5 animate-fadeIn">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-            <span>{errorMsg}</span>
+          <div className="mb-4 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex flex-col gap-2 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span className="font-semibold">{errorMsg}</span>
+            </div>
+            {errorDetails && (
+              <div className="mt-1 pt-2 border-t border-red-200/60 text-[11px] text-red-800 space-y-1">
+                <p className="font-bold">{errorDetails.title}</p>
+                <p>{errorDetails.tip}</p>
+                {errorDetails.link && (
+                  <a
+                    href={errorDetails.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-bold text-blue-700 hover:underline mt-1"
+                  >
+                    Buka Konfigurasi Firebase Console
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* 1. Login dengan Akun Google (Opsi Cepat) */}
+        {/* 1. Login dengan Akun Google (Opsi Utama) */}
         <button
           type="button"
           onClick={handleGoogleLogin}
           disabled={loading}
-          className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs border border-gray-200 shadow-2xs hover:border-gray-300 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs border border-gray-200 shadow-2xs hover:border-gray-300 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
             <path
               fill="#4285F4"
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -154,17 +223,82 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           <span>Masuk Cepat dengan Google</span>
         </button>
 
+        {/* Pemilih Akun Google Langsung (Multi-User Data Separation) */}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setShowDirectPicker(!showDirectPicker)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-blue-50/70 hover:bg-blue-50 text-blue-700 text-[11px] font-semibold transition"
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <span>Uji Pemisahan Multi-Akun Google</span>
+            </span>
+            <span className="text-[10px] text-blue-600/80">{showDirectPicker ? 'Sembunyikan' : 'Buka Pilihan'}</span>
+          </button>
+
+          {showDirectPicker && (
+            <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs space-y-2.5 animate-fadeIn">
+              <p className="text-[11px] text-gray-500 font-medium">
+                Setiap akun Google memiliki data & dokumen yang terpisah 100%:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuickAccount('muhammad@gmail.com', 'Muhammad')}
+                  disabled={loading}
+                  className="px-2.5 py-2 rounded-lg bg-white border border-gray-200 text-left hover:border-blue-500 hover:shadow-xs transition"
+                >
+                  <p className="font-bold text-gray-800 text-[11px] flex items-center gap-1">
+                    <UserCheck className="w-3 h-3 text-blue-600" /> Muhammad
+                  </p>
+                  <p className="text-[9px] text-gray-400 truncate">muhammad@gmail.com</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickAccount('budi@gmail.com', 'Budi Santoso')}
+                  disabled={loading}
+                  className="px-2.5 py-2 rounded-lg bg-white border border-gray-200 text-left hover:border-emerald-500 hover:shadow-xs transition"
+                >
+                  <p className="font-bold text-gray-800 text-[11px] flex items-center gap-1">
+                    <UserCheck className="w-3 h-3 text-emerald-600" /> Budi
+                  </p>
+                  <p className="text-[9px] text-gray-400 truncate">budi@gmail.com</p>
+                </button>
+              </div>
+
+              {/* Input Email Sendiri */}
+              <form onSubmit={handleCustomAccountSubmit} className="flex gap-1.5 pt-1">
+                <input
+                  type="email"
+                  placeholder="atau ketik email google Anda..."
+                  value={customGoogleEmail}
+                  onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                  className="flex-1 px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-[11px] focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !customGoogleEmail.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition disabled:opacity-50"
+                >
+                  Masuk
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+
         {/* Divider */}
-        <div className="my-5 flex items-center gap-3">
+        <div className="my-4 flex items-center gap-3">
           <div className="h-[1px] bg-gray-200 flex-1" />
           <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">
-            Atau Gunakan Email & Sandi
+            Atau Email & Sandi
           </span>
           <div className="h-[1px] bg-gray-200 flex-1" />
         </div>
 
         {/* 2. Form Login Email & Password */}
-        <form onSubmit={handleEmailLogin} className="space-y-4 text-xs">
+        <form onSubmit={handleEmailLogin} className="space-y-3.5 text-xs">
           <div>
             <label className="block font-bold text-gray-700 mb-1">
               Alamat Email
@@ -234,9 +368,9 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+        <div className="mt-5 pt-3.5 border-t border-gray-100 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
           <LockKeyhole className="w-3.5 h-3.5 text-blue-600" />
-          <span>Dilindungi oleh Firebase Authentication & Cloud Firestore</span>
+          <span>Setiap akun memiliki database dokumen pribadi terpisah</span>
         </div>
 
       </div>

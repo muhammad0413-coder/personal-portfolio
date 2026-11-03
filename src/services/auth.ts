@@ -1,5 +1,6 @@
 import {
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signInWithPopup,
   signOut,
   sendPasswordResetEmail,
@@ -31,14 +32,12 @@ export const setStoredLocalAdmin = (user: AdminUser | null) => {
 
 export const checkIsUserAdmin = async (user: User | null): Promise<boolean> => {
   if (!user) return false;
-  
-  // If specific admin emails configured via env
+
   const configuredAdminEmail = import.meta.env.VITE_ADMIN_EMAIL;
   if (configuredAdminEmail && user.email?.toLowerCase() === configuredAdminEmail.toLowerCase()) {
     return true;
   }
 
-  // Check Firestore users collection
   if (db) {
     try {
       const userDocRef = doc(db, 'users', user.uid);
@@ -47,60 +46,96 @@ export const checkIsUserAdmin = async (user: User | null): Promise<boolean> => {
         const userData = userSnap.data();
         return userData.role === 'admin';
       } else {
-        // If it's the first user or email matches, we can register them as admin
         return true;
       }
     } catch (e) {
       console.warn('Firestore role check notice:', e);
-      return true; // Fallback to allowing authenticated user in single-owner portfolio
+      return true;
     }
   }
 
   return true;
 };
 
+// ================= EMAIL & PASSWORD LOGIN (AUTO REGISTER NEW ACCOUNTS) =================
 export const loginWithEmail = async (email: string, password: string): Promise<User | AdminUser> => {
+  const cleanEmail = email.trim().toLowerCase();
+
   if (isFirebaseConfigured() && auth) {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    
-    // Register/update user document in Firestore if available
-    if (db) {
-      try {
-        const userRef = doc(db, 'users', user.uid);
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) {
+    try {
+      // 1. Coba login pengguna yang sudah ada
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const user = userCredential.user;
+
+      if (db) {
+        try {
+          const userRef = doc(db, 'users', user.uid);
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName || user.email?.split('@')[0],
             role: 'admin',
-            createdAt: new Date().toISOString()
-          });
+            lastLogin: new Date().toISOString()
+          }, { merge: true });
+        } catch (err) {
+          console.warn('Could not sync user to Firestore:', err);
         }
-      } catch (err) {
-        console.warn('Could not sync user to Firestore:', err);
       }
-    }
 
-    return user;
+      return user;
+    } catch (err: any) {
+      // 2. Jika akun belum ada di Firebase Auth, otomatis daftarkan akun baru
+      if (
+        err?.code === 'auth/user-not-found' ||
+        err?.code === 'auth/invalid-credential' ||
+        err?.code === 'auth/invalid-login-credentials'
+      ) {
+        try {
+          const newCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          const newUser = newCredential.user;
+
+          if (db) {
+            try {
+              const userRef = doc(db, 'users', newUser.uid);
+              await setDoc(userRef, {
+                uid: newUser.uid,
+                email: newUser.email,
+                displayName: newUser.displayName || newUser.email?.split('@')[0],
+                role: 'admin',
+                createdAt: new Date().toISOString(),
+                lastLogin: new Date().toISOString()
+              }, { merge: true });
+            } catch (e) {
+              console.warn('Could not create Firestore user entry:', e);
+            }
+          }
+
+          return newUser;
+        } catch (signupErr) {
+          throw signupErr;
+        }
+      }
+      throw err;
+    }
   } else {
-    // Demo / offline authentication fallback
-    if (email && password.length >= 6) {
+    // Mode offline / lokal: setiap email memiliki UID terisolasi sendiri
+    if (cleanEmail && password.length >= 6) {
+      const safeUid = `user_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
       const demoUser: AdminUser = {
-        uid: 'demo-admin-uid-12345',
-        email,
-        displayName: email.split('@')[0],
+        uid: safeUid,
+        email: cleanEmail,
+        displayName: cleanEmail.split('@')[0],
         role: 'admin',
         createdAt: new Date().toISOString()
       };
       setStoredLocalAdmin(demoUser);
       return demoUser;
     }
-    throw new Error('Email dan password minimal 6 karakter');
+    throw new Error('Email dan kata sandi minimal 6 karakter.');
   }
 };
 
+// ================= GOOGLE 1-CLICK POPUP LOGIN =================
 export const loginWithGoogle = async (): Promise<User | AdminUser> => {
   if (isFirebaseConfigured() && auth) {
     const result = await signInWithPopup(auth, googleProvider);
@@ -109,16 +144,14 @@ export const loginWithGoogle = async (): Promise<User | AdminUser> => {
     if (db) {
       try {
         const userRef = doc(db, 'users', user.uid);
-        const snap = await getDoc(userRef);
-        if (!snap.exists()) {
-          await setDoc(userRef, {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            role: 'admin',
-            createdAt: new Date().toISOString()
-          });
-        }
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || user.email?.split('@')[0],
+          photoURL: user.photoURL || '',
+          role: 'admin',
+          lastLogin: new Date().toISOString()
+        }, { merge: true });
       } catch (err) {
         console.warn('Could not sync Google user to Firestore:', err);
       }
@@ -126,11 +159,11 @@ export const loginWithGoogle = async (): Promise<User | AdminUser> => {
 
     return user;
   } else {
-    // Demo fallback for Google login
+    // Mode fallback dengan ID unik
     const demoGoogleUser: AdminUser = {
-      uid: 'demo-google-admin-12345',
-      email: 'admin@codecraft.dev',
-      displayName: 'Alex Administrator',
+      uid: 'google_muhammad_default',
+      email: 'muhammad@gmail.com',
+      displayName: 'Muhammad User',
       role: 'admin',
       createdAt: new Date().toISOString()
     };
@@ -139,23 +172,68 @@ export const loginWithGoogle = async (): Promise<User | AdminUser> => {
   }
 };
 
+// ================= LOGIN DENGAN AKUN GOOGLE SPESIFIK (MULTI-USER TEST) =================
+export const loginDirectGoogleAccount = async (
+  email: string,
+  displayName?: string
+): Promise<AdminUser> => {
+  const cleanEmail = email.trim().toLowerCase();
+  const safeUid = `google_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+  const name = displayName || cleanEmail.split('@')[0];
+
+  const user: AdminUser = {
+    uid: safeUid,
+    email: cleanEmail,
+    displayName: name,
+    role: 'admin',
+    createdAt: new Date().toISOString()
+  };
+
+  if (isFirebaseConfigured() && db) {
+    try {
+      await setDoc(
+        doc(db, 'users', safeUid),
+        {
+          uid: safeUid,
+          email: cleanEmail,
+          displayName: name,
+          role: 'admin',
+          lastLogin: new Date().toISOString()
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Firestore direct user sync notice:', e);
+    }
+  }
+
+  setStoredLocalAdmin(user);
+  return user;
+};
+
+// ================= RESET PASSWORD =================
 export const resetPassword = async (email: string): Promise<void> => {
   if (isFirebaseConfigured() && auth) {
-    await sendPasswordResetEmail(auth, email);
+    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   } else {
-    // Simulated reset email
     await new Promise((resolve) => setTimeout(resolve, 800));
     console.info(`[Demo Mode] Password reset link sent to: ${email}`);
   }
 };
 
+// ================= LOGOUT =================
 export const logoutAdmin = async (): Promise<void> => {
   if (isFirebaseConfigured() && auth) {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('Firebase signOut notice:', e);
+    }
   }
   setStoredLocalAdmin(null);
 };
 
+// ================= AUTH STATE SUBSCRIBER =================
 export const subscribeToAuth = (
   callback: (user: User | AdminUser | null) => void
 ) => {

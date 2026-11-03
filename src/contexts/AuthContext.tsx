@@ -3,6 +3,7 @@ import { User } from 'firebase/auth';
 import {
   loginWithEmail,
   loginWithGoogle,
+  loginDirectGoogleAccount,
   logoutAdmin,
   resetPassword,
   subscribeToAuth,
@@ -16,6 +17,7 @@ interface AuthContextType {
   loading: boolean;
   loginEmail: (email: string, pass: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
+  loginDirectGoogle: (email: string, displayName?: string) => Promise<void>;
   resetUserPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -68,6 +70,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginDirectGoogle = async (email: string, displayName?: string) => {
+    setLoading(true);
+    try {
+      const user = await loginDirectGoogleAccount(email, displayName);
+      setCurrentUser(user);
+      setIsAdmin(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetUserPassword = async (email: string) => {
     await resetPassword(email);
   };
@@ -86,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         loginEmail,
         loginGoogle,
+        loginDirectGoogle,
         resetUserPassword,
         logout,
       }}
