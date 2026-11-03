@@ -10,7 +10,8 @@ import {
   Database,
   Trophy,
   ShieldCheck,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import { DocumentCategory } from '../../types';
 
@@ -20,6 +21,8 @@ interface SidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
   onOpenUpload: () => void;
+  onLogout?: () => void;
+  userEmail?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,7 +30,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   mobileOpen,
   onCloseMobile,
-  onOpenUpload
+  onOpenUpload,
+  onLogout,
+  userEmail
 }) => {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -119,8 +124,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </nav>
         </div>
 
-        {/* Bottom Trophy Quote Card matching Screenshot */}
-        <div className="p-4">
+        {/* Bottom User & Logout & Trophy Card */}
+        <div className="p-4 space-y-3">
+          {userEmail && (
+            <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/5 text-[11px] text-gray-300 flex items-center justify-between">
+              <span className="truncate font-mono">{userEmail}</span>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="text-red-400 hover:text-red-300 p-1 transition"
+                  title="Keluar / Logout"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="p-4 rounded-2xl bg-[#080D1D] border border-white/5 text-center relative overflow-hidden">
             <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto mb-2.5 shadow-inner">
               <Trophy className="w-5 h-5" />

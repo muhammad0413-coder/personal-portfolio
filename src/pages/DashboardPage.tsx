@@ -9,10 +9,12 @@ import { PreviewModal } from '../components/dashboard/PreviewModal';
 import { ProfileModal } from '../components/dashboard/ProfileModal';
 import { CloudModal } from '../components/dashboard/CloudModal';
 import { useData } from '../contexts/DataContext';
+import { useAuth } from '../contexts/AuthContext';
 import { PersonalDocument, DocumentCategory } from '../types';
 
 export const DashboardPage: React.FC = () => {
   const { profile, documents, updateProfile, saveDocument, deleteDocument } = useData();
+  const { currentUser, logout } = useAuth();
 
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua');
@@ -81,6 +83,8 @@ export const DashboardPage: React.FC = () => {
           setEditingDoc(null);
           setIsUploadOpen(true);
         }}
+        onLogout={logout}
+        userEmail={currentUser?.email || undefined}
       />
 
       {/* 2. Main Dashboard Content Canvas */}
