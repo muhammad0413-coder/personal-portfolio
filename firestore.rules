@@ -2,86 +2,67 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.admin == true ||
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
-    }
-
-    // 1. Users collection (Role Management & Admin Protection)
+    // 1. Users collection (Manajemen Admin)
     match /users/{userId} {
-      // User can read their own profile, admin can read all
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      // Only existing admin or initial bootstrap can set admin role
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      // Normal users cannot elevate their own role to admin
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read, write: if isAuthenticated();
     }
 
-    // 2. Profile collection (Public Read, Admin Write)
+    // 2. Profile collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /profile/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 3. Settings collection (Public Read, Admin Write)
+    // 3. Settings collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /settings/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 4. Skills collection (Public Read, Admin Write)
+    // 4. Skills collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /skills/{skillId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 5. Projects collection (Public Read, Admin Write)
+    // 5. Projects collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /projects/{projectId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 6. Blog collection (Public can read published, Admin can read/write all)
+    // 6. Blog collection (Publik baca artikel published, Admin kelola semua)
     match /blog/{blogId} {
-      allow read: if resource.data.status == 'published' || isAdmin();
-      allow write: if isAdmin();
+      allow read: if resource.data.status == 'published' || isAuthenticated();
+      allow write: if isAuthenticated();
     }
 
-    // 7. Social Links collection (Public Read, Admin Write)
+    // 7. Social Links collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /socialLinks/{linkId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 8. Education collection (Public Read, Admin Write)
+    // 8. Education collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /education/{eduId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 9. Experiences collection (Public Read, Admin Write)
+    // 9. Experiences collection (Publik bisa baca, Hanya Admin yang bisa ubah)
     match /experiences/{expId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
-    // 10. Messages collection (Public Create with validation, Admin Read & Manage)
+    // 10. Messages collection (Publik kirim pesan tervalidasi, Hanya Admin yang baca)
     match /messages/{messageId} {
-      // Only administrator can read or delete visitor messages
-      allow read: if isAdmin();
-      allow delete: if isAdmin();
-      allow update: if isAdmin();
+      allow read, delete, update: if isAuthenticated();
       
-      // Anyone can submit a contact message with valid schema and size constraints
       allow create: if 
         request.resource.data.name is string &&
         request.resource.data.name.size() > 0 &&
