@@ -7,246 +7,127 @@ import {
   User,
   onAuthStateChanged
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
-import { AdminUser } from '../types';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db, googleProvider } from './firebase';
 
-export const ADMIN_STORAGE_KEY = 'portfolio_admin_auth_fallback';
-
-export const getStoredLocalAdmin = (): AdminUser | null => {
-  try {
-    const raw = localStorage.getItem(ADMIN_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-export const setStoredLocalAdmin = (user: AdminUser | null) => {
-  if (user) {
-    localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(ADMIN_STORAGE_KEY);
-  }
-};
-
-export const checkIsUserAdmin = async (user: User | null): Promise<boolean> => {
-  if (!user) return false;
-
-  const configuredAdminEmail = import.meta.env.VITE_ADMIN_EMAIL;
-  if (configuredAdminEmail && user.email?.toLowerCase() === configuredAdminEmail.toLowerCase()) {
-    return true;
+// ================= LOGIN DENGAN GOOGLE (POPUP RESMI FIREBASE) =================
+export const loginWithGoogle = async (): Promise<User> => {
+  if (!auth) {
+    throw new Error('Firebase Auth belum siap.');
   }
 
-  if (db) {
+  // Buka popup resmi Google OAuth
+  const result = await signInWithPopup(auth, googleProvider);
+  const user = result.user;
+
+  // Catat data akun ke koleksi users di Cloud Firestore
+  if (db && user.uid) {
     try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userDocRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        return userData.role === 'admin';
-      } else {
-        return true;
-      }
-    } catch (e) {
-      console.warn('Firestore role check notice:', e);
-      return true;
-    }
-  }
-
-  return true;
-};
-
-// ================= EMAIL & PASSWORD LOGIN (AUTO REGISTER NEW ACCOUNTS) =================
-export const loginWithEmail = async (email: string, password: string): Promise<User | AdminUser> => {
-  const cleanEmail = email.trim().toLowerCase();
-
-  if (isFirebaseConfigured() && auth) {
-    try {
-      // 1. Coba login pengguna yang sudah ada
-      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-      const user = userCredential.user;
-
-      if (db) {
-        try {
-          const userRef = doc(db, 'users', user.uid);
-          await setDoc(userRef, {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || user.email?.split('@')[0],
-            role: 'admin',
-            lastLogin: new Date().toISOString()
-          }, { merge: true });
-        } catch (err) {
-          console.warn('Could not sync user to Firestore:', err);
-        }
-      }
-
-      return user;
-    } catch (err: any) {
-      // 2. Jika akun belum ada di Firebase Auth, otomatis daftarkan akun baru
-      if (
-        err?.code === 'auth/user-not-found' ||
-        err?.code === 'auth/invalid-credential' ||
-        err?.code === 'auth/invalid-login-credentials'
-      ) {
-        try {
-          const newCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-          const newUser = newCredential.user;
-
-          if (db) {
-            try {
-              const userRef = doc(db, 'users', newUser.uid);
-              await setDoc(userRef, {
-                uid: newUser.uid,
-                email: newUser.email,
-                displayName: newUser.displayName || newUser.email?.split('@')[0],
-                role: 'admin',
-                createdAt: new Date().toISOString(),
-                lastLogin: new Date().toISOString()
-              }, { merge: true });
-            } catch (e) {
-              console.warn('Could not create Firestore user entry:', e);
-            }
-          }
-
-          return newUser;
-        } catch (signupErr) {
-          throw signupErr;
-        }
-      }
-      throw err;
-    }
-  } else {
-    // Mode offline / lokal: setiap email memiliki UID terisolasi sendiri
-    if (cleanEmail && password.length >= 6) {
-      const safeUid = `user_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
-      const demoUser: AdminUser = {
-        uid: safeUid,
-        email: cleanEmail,
-        displayName: cleanEmail.split('@')[0],
-        role: 'admin',
-        createdAt: new Date().toISOString()
-      };
-      setStoredLocalAdmin(demoUser);
-      return demoUser;
-    }
-    throw new Error('Email dan kata sandi minimal 6 karakter.');
-  }
-};
-
-// ================= GOOGLE 1-CLICK POPUP LOGIN =================
-export const loginWithGoogle = async (): Promise<User | AdminUser> => {
-  if (isFirebaseConfigured() && auth) {
-    const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
-
-    if (db) {
-      try {
-        const userRef = doc(db, 'users', user.uid);
-        await setDoc(userRef, {
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || user.email?.split('@')[0],
           photoURL: user.photoURL || '',
-          role: 'admin',
-          lastLogin: new Date().toISOString()
-        }, { merge: true });
-      } catch (err) {
-        console.warn('Could not sync Google user to Firestore:', err);
-      }
-    }
-
-    return user;
-  } else {
-    // Mode fallback dengan ID unik
-    const demoGoogleUser: AdminUser = {
-      uid: 'google_muhammad_default',
-      email: 'muhammad@gmail.com',
-      displayName: 'Muhammad User',
-      role: 'admin',
-      createdAt: new Date().toISOString()
-    };
-    setStoredLocalAdmin(demoGoogleUser);
-    return demoGoogleUser;
-  }
-};
-
-// ================= LOGIN DENGAN AKUN GOOGLE SPESIFIK (MULTI-USER TEST) =================
-export const loginDirectGoogleAccount = async (
-  email: string,
-  displayName?: string
-): Promise<AdminUser> => {
-  const cleanEmail = email.trim().toLowerCase();
-  const safeUid = `google_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
-  const name = displayName || cleanEmail.split('@')[0];
-
-  const user: AdminUser = {
-    uid: safeUid,
-    email: cleanEmail,
-    displayName: name,
-    role: 'admin',
-    createdAt: new Date().toISOString()
-  };
-
-  if (isFirebaseConfigured() && db) {
-    try {
-      await setDoc(
-        doc(db, 'users', safeUid),
-        {
-          uid: safeUid,
-          email: cleanEmail,
-          displayName: name,
-          role: 'admin',
+          provider: 'google',
           lastLogin: new Date().toISOString()
         },
         { merge: true }
       );
-    } catch (e) {
-      console.warn('Firestore direct user sync notice:', e);
+    } catch (err) {
+      console.warn('Sinkronisasi data user ke Firestore:', err);
     }
   }
 
-  setStoredLocalAdmin(user);
   return user;
 };
 
-// ================= RESET PASSWORD =================
-export const resetPassword = async (email: string): Promise<void> => {
-  if (isFirebaseConfigured() && auth) {
-    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
-  } else {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    console.info(`[Demo Mode] Password reset link sent to: ${email}`);
+// ================= LOGIN DENGAN EMAIL & PASSWORD =================
+export const loginWithEmail = async (email: string, password: string): Promise<User> => {
+  if (!auth) {
+    throw new Error('Firebase Auth belum siap.');
   }
-};
 
-// ================= LOGOUT =================
-export const logoutAdmin = async (): Promise<void> => {
-  if (isFirebaseConfigured() && auth) {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      console.warn('Firebase signOut notice:', e);
-    }
-  }
-  setStoredLocalAdmin(null);
-};
+  const cleanEmail = email.trim().toLowerCase();
 
-// ================= AUTH STATE SUBSCRIBER =================
-export const subscribeToAuth = (
-  callback: (user: User | AdminUser | null) => void
-) => {
-  if (isFirebaseConfigured() && auth) {
-    return onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        callback(firebaseUser);
-      } else {
-        callback(getStoredLocalAdmin());
+  try {
+    // 1. Coba login pengguna terdaftar
+    const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    const user = credential.user;
+
+    if (db && user.uid) {
+      try {
+        await setDoc(
+          doc(db, 'users', user.uid),
+          {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || user.email?.split('@')[0],
+            provider: 'password',
+            lastLogin: new Date().toISOString()
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Sinkronisasi login Firestore:', err);
       }
-    });
-  } else {
-    callback(getStoredLocalAdmin());
+    }
+
+    return user;
+  } catch (err: any) {
+    // 2. Jika akun belum pernah dibuat di Firebase Auth, otomatis buatkan akun baru
+    if (
+      err?.code === 'auth/user-not-found' ||
+      err?.code === 'auth/invalid-credential' ||
+      err?.code === 'auth/invalid-login-credentials'
+    ) {
+      const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const newUser = newCred.user;
+
+      if (db && newUser.uid) {
+        try {
+          await setDoc(
+            doc(db, 'users', newUser.uid),
+            {
+              uid: newUser.uid,
+              email: newUser.email,
+              displayName: newUser.displayName || newUser.email?.split('@')[0],
+              provider: 'password',
+              createdAt: new Date().toISOString(),
+              lastLogin: new Date().toISOString()
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn('Pembuatan akun baru Firestore:', e);
+        }
+      }
+
+      return newUser;
+    }
+    throw err;
+  }
+};
+
+// ================= RESET PASSWORD VIA EMAIL =================
+export const resetPassword = async (email: string): Promise<void> => {
+  if (!auth) throw new Error('Firebase Auth belum siap.');
+  await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+};
+
+// ================= LOGOUT RESMI =================
+export const logoutUser = async (): Promise<void> => {
+  if (auth) {
+    await signOut(auth);
+  }
+};
+
+// ================= PEMANTAU SESI OTENTIKASI AKTIF =================
+export const subscribeToAuth = (callback: (user: User | null) => void) => {
+  if (!auth) {
+    callback(null);
     return () => {};
   }
+  return onAuthStateChanged(auth, callback);
 };

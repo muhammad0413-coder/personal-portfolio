@@ -3,21 +3,16 @@ import { User } from 'firebase/auth';
 import {
   loginWithEmail,
   loginWithGoogle,
-  loginDirectGoogleAccount,
-  logoutAdmin,
+  logoutUser,
   resetPassword,
-  subscribeToAuth,
-  checkIsUserAdmin
+  subscribeToAuth
 } from '../services/auth';
-import { AdminUser } from '../types';
 
 interface AuthContextType {
-  currentUser: User | AdminUser | null;
-  isAdmin: boolean;
+  currentUser: User | null;
   loading: boolean;
   loginEmail: (email: string, pass: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
-  loginDirectGoogle: (email: string, displayName?: string) => Promise<void>;
   resetUserPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -25,83 +20,57 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | AdminUser | null>(null);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const unsubscribe = subscribeToAuth(async (user) => {
+    // Sinkronkan status autentikasi langsung dengan Firebase Auth
+    const unsubscribe = subscribeToAuth((user) => {
       setCurrentUser(user);
-      if (user) {
-        if ('role' in user && user.role === 'admin') {
-          setIsAdmin(true);
-        } else {
-          const hasAdminRole = await checkIsUserAdmin(user as User);
-          setIsAdmin(hasAdminRole);
-        }
-      } else {
-        setIsAdmin(false);
-      }
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const loginEmail = async (email: string, pass: string) => {
+  const loginEmailAction = async (email: string, pass: string) => {
     setLoading(true);
     try {
       const user = await loginWithEmail(email, pass);
       setCurrentUser(user);
-      setIsAdmin(true);
     } finally {
       setLoading(false);
     }
   };
 
-  const loginGoogle = async () => {
+  const loginGoogleAction = async () => {
     setLoading(true);
     try {
       const user = await loginWithGoogle();
       setCurrentUser(user);
-      setIsAdmin(true);
     } finally {
       setLoading(false);
     }
   };
 
-  const loginDirectGoogle = async (email: string, displayName?: string) => {
-    setLoading(true);
-    try {
-      const user = await loginDirectGoogleAccount(email, displayName);
-      setCurrentUser(user);
-      setIsAdmin(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetUserPassword = async (email: string) => {
+  const resetUserPasswordAction = async (email: string) => {
     await resetPassword(email);
   };
 
-  const logout = async () => {
-    await logoutAdmin();
+  const logoutAction = async () => {
+    await logoutUser();
     setCurrentUser(null);
-    setIsAdmin(false);
   };
 
   return (
     <AuthContext.Provider
       value={{
         currentUser,
-        isAdmin,
         loading,
-        loginEmail,
-        loginGoogle,
-        loginDirectGoogle,
-        resetUserPassword,
-        logout,
+        loginEmail: loginEmailAction,
+        loginGoogle: loginGoogleAction,
+        resetUserPassword: resetUserPasswordAction,
+        logout: logoutAction,
       }}
     >
       {children}

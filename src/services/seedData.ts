@@ -20,7 +20,7 @@ export const defaultProfile: PersonalProfile = {
   occupation: "Karyawan Swasta / Software Engineer",
   phone: "+62 812-3456-7890",
   email: "muhammad0413.coder@gmail.com",
-  avatarUrl: "/profile-alex.png",
+  avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=300&q=80",
   updatedAt: new Date().toISOString()
 };
 
