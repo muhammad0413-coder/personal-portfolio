@@ -10,11 +10,23 @@ export type DocumentCategory =
 
 export type DocumentStatus = 'Terverifikasi' | 'Menunggu' | 'Perlu Pembaruan';
 
+// Model Folder Dokumen (Pengguna bisa membuat folder sendiri)
+export interface DocumentFolder {
+  id: string;
+  userId?: string;
+  name: string;             // Contoh: "Ijazah & Pendidikan", "Kependudukan", dll.
+  description?: string;     // Contoh: "Arsip Ijazah dari SD, SMP, SMA, S1 sampai S3"
+  color?: string;           // Warna folder: blue, amber, emerald, purple, rose
+  icon?: string;
+  createdAt: string;
+}
+
 export interface PersonalDocument {
   id: string;
   userId?: string;           // ID pemilik dokumen (terisolasi per akun Google)
-  title: string;             // Contoh: "KTP Elektronik", "Kartu Keluarga (KK)"
-  docNumber: string;         // Contoh: NIK "3201...", No. KK "3201..."
+  folderId?: string;         // ID folder tempat berkas berada (misal: 'folder-ijazah')
+  title: string;             // Contoh: "Ijazah SD", "Ijazah S1", "KTP Elektronik"
+  docNumber: string;         // Contoh: Nomor Ijazah, NIK, No. KK
   category: DocumentCategory;
   fileUrl: string;           // Base64 atau URL Firebase Storage
   fileName: string;
