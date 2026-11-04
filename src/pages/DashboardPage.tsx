@@ -490,30 +490,30 @@ export const DashboardPage: React.FC = () => {
 
                     {/* Tombol Aksi di Bawah Kartu */}
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      {/* Tombol Unduh Instan */}
-                      <button
-                        onClick={() => handleDownload(doc)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-xs cursor-pointer"
-                        title="Unduh file asli ke komputer / HP"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Unduh</span>
-                      </button>
-
-                      {/* Tombol Lihat */}
+                      {/* Tombol Utama: LIHAT FILE LANGSUNG TANPA DOWNLOAD */}
                       <button
                         onClick={() => setPreviewDoc(doc)}
-                        className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                        title="Buka Pratinjau Dokumen"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-xs cursor-pointer"
+                        title="Buka dan baca isi dokumen langsung di layar (tanpa download)"
                       >
                         <Eye className="w-4 h-4" />
+                        <span>Lihat Berkas</span>
+                      </button>
+
+                      {/* Tombol Unduh Opsi Tambahan */}
+                      <button
+                        onClick={() => handleDownload(doc)}
+                        className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                        title="Unduh file asli ke perangkat"
+                      >
+                        <Download className="w-4 h-4" />
                       </button>
 
                       {/* Tombol Edit */}
                       <button
                         onClick={() => handleEdit(doc)}
-                        className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                        title="Ubah nomor / data berkas"
+                        className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                        title="Ubah data berkas"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -521,7 +521,7 @@ export const DashboardPage: React.FC = () => {
                       {/* Tombol Hapus */}
                       <button
                         onClick={() => handleDelete(doc.id, doc.title)}
-                        className="p-2 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 transition cursor-pointer"
+                        className="p-2.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 transition cursor-pointer"
                         title="Hapus berkas ini"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -575,19 +575,22 @@ export const DashboardPage: React.FC = () => {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleDownload(doc)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-[11px] transition"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Unduh</span>
-                              </button>
+                              {/* Tombol Lihat Langsung */}
                               <button
                                 onClick={() => setPreviewDoc(doc)}
-                                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition"
-                                title="Lihat"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition cursor-pointer shadow-2xs"
+                                title="Buka dan lihat berkas di layar"
                               >
-                                <Eye className="w-4 h-4" />
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Lihat Berkas</span>
+                              </button>
+                              {/* Tombol Unduh Tambahan */}
+                              <button
+                                onClick={() => handleDownload(doc)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                                title="Unduh"
+                              >
+                                <Download className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleEdit(doc)}
