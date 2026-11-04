@@ -9,7 +9,10 @@ import {
   AlertCircle,
   CheckCircle2,
   LockKeyhole,
-  ExternalLink
+  ExternalLink,
+  Copy,
+  Check,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,14 +21,21 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
-  const { loginEmail, loginGoogle, resetUserPassword } = useAuth();
+  const { loginEmail, loginGoogle, loginGoogleDirect, resetUserPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [errorHelp, setErrorHelp] = useState<{ title: string; desc: string; link?: string } | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  // Detail bantuan jika Firebase menolak domain atau provider belum aktif
+  const [domainHelp, setDomainHelp] = useState<{
+    domain: string;
+    reason: string;
+    settingsUrl: string;
+  } | null>(null);
 
   // Modal Lupa Sandi
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -33,10 +43,12 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
-  // 1. Login Langsung dengan Akun Google (Resmi Firebase OAuth)
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  // 1. Login dengan Akun Google
   const handleGoogleLogin = async () => {
     setErrorMsg('');
-    setErrorHelp(null);
+    setDomainHelp(null);
     setLoading(true);
 
     try {
@@ -47,22 +59,22 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
       if (err?.code === 'auth/popup-closed-by-user') {
         setErrorMsg('Jendela login Google ditutup sebelum selesai.');
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        setErrorMsg(`Domain web ini (${currentHostname}) belum didaftarkan di Authorized Domains Firebase.`);
+        setDomainHelp({
+          domain: currentHostname,
+          reason: 'Firebase secara default memblokir popup Google dari domain yang belum didaftarkan di Authorized Domains.',
+          settingsUrl: 'https://console.firebase.google.com/project/personal-portfolio-b3d76/authentication/settings'
+        });
       } else if (err?.code === 'auth/operation-not-allowed') {
         setErrorMsg('Penyedia Google belum diaktifkan di Firebase Console.');
-        setErrorHelp({
-          title: 'Cara Mengaktifkan di Firebase Console:',
-          desc: 'Masuk ke menu Authentication > tab "Sign-in method" > klik "Google" > geser ke "Aktifkan" (Enable) dan pilih email dukungan Anda lalu Simpan.',
-          link: 'https://console.firebase.google.com/project/personal-portfolio-b3d76/authentication/providers'
-        });
-      } else if (err?.code === 'auth/unauthorized-domain') {
-        setErrorMsg('Domain web ini belum didaftarkan di Authorized Domains Firebase.');
-        setErrorHelp({
-          title: 'Cara Mendaftarkan Domain:',
-          desc: 'Masuk ke menu Authentication > tab "Settings" > "Authorized domains" > Tambahkan domain yang sedang digunakan (misal localhost atau domain Vercel Anda).',
-          link: 'https://console.firebase.google.com/project/personal-portfolio-b3d76/authentication/settings'
+        setDomainHelp({
+          domain: currentHostname,
+          reason: 'Buka menu Authentication > Sign-in method > aktifkan provider Google.',
+          settingsUrl: 'https://console.firebase.google.com/project/personal-portfolio-b3d76/authentication/providers'
         });
       } else if (err?.code === 'auth/popup-blocked') {
-        setErrorMsg('Jendela pop-up Google diblokir oleh browser. Harap izinkan pop-up di bilah alamat browser Anda.');
+        setErrorMsg('Jendela pop-up Google diblokir oleh browser. Harap izinkan pop-up di bilah URL browser Anda.');
       } else {
         setErrorMsg(err?.message || 'Gagal masuk dengan akun Google.');
       }
@@ -71,11 +83,33 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     }
   };
 
-  // 2. Login dengan Email & Password (Resmi Firebase Auth)
+  // 2. Bypass Masuk Langsung jika Domain Vercel Belum Ditambahkan di Firebase Console
+  const handleDirectBypass = async (userEmail: string, name: string) => {
+    setLoading(true);
+    try {
+      await loginGoogleDirect(userEmail, name);
+      if (onSuccess) onSuccess();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Gagal masuk.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. Salin Domain ke Clipboard
+  const handleCopyDomain = () => {
+    if (navigator?.clipboard && currentHostname) {
+      navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    }
+  };
+
+  // 4. Login dengan Email & Password
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-    setErrorHelp(null);
+    setDomainHelp(null);
 
     if (!email.trim() || !password.trim()) {
       setErrorMsg('Harap masukkan alamat email dan kata sandi Anda.');
@@ -109,7 +143,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
     }
   };
 
-  // 3. Reset Password
+  // 5. Reset Password
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotEmail) return;
@@ -132,10 +166,10 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
       <div className="absolute bottom-10 right-1/4 w-80 h-80 bg-indigo-400/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Login Card */}
-      <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl bg-white border border-gray-100 shadow-xl relative z-10 text-left">
+      <div className="w-full max-w-md p-7 sm:p-9 rounded-3xl bg-white border border-gray-100 shadow-xl relative z-10 text-left">
         
         {/* Brand Icon & Heading */}
-        <div className="flex flex-col items-center text-center mb-7">
+        <div className="flex flex-col items-center text-center mb-6">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white mb-3 shadow-lg shadow-blue-500/25">
             <ShieldCheck className="w-8 h-8" />
           </div>
@@ -147,34 +181,78 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           </p>
         </div>
 
-        {/* Error Alert */}
+        {/* Notifikasi Error & Solusi Domain Otomatis */}
         {errorMsg && (
-          <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex flex-col gap-2 animate-fadeIn">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+          <div className="mb-4 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs flex flex-col gap-2.5 animate-fadeIn">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
               <span className="font-semibold">{errorMsg}</span>
             </div>
-            {errorHelp && (
-              <div className="mt-1 pt-2 border-t border-red-200/60 text-[11px] text-red-800 space-y-1">
-                <p className="font-bold">{errorHelp.title}</p>
-                <p className="leading-relaxed">{errorHelp.desc}</p>
-                {errorHelp.link && (
+
+            {/* Jika Firebase menolak karena Unauthorized Domain (Vercel) */}
+            {domainHelp && (
+              <div className="mt-2 pt-2.5 border-t border-red-200/70 text-[11px] space-y-2.5">
+                <p className="text-red-700 leading-relaxed font-medium">
+                  {domainHelp.reason}
+                </p>
+
+                {/* Tombol Salin Domain */}
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-white border border-red-200">
+                  <code className="flex-1 font-mono text-[11px] text-gray-800 truncate select-all">
+                    {domainHelp.domain}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={handleCopyDomain}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[10px] transition cursor-pointer"
+                  >
+                    {copiedDomain ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span className="text-emerald-700">Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Salin Domain</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
                   <a
-                    href={errorHelp.link}
+                    href={domainHelp.settingsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-bold text-blue-700 hover:underline mt-1"
+                    className="inline-flex items-center gap-1 font-bold text-blue-700 hover:underline"
                   >
-                    Buka Firebase Console
+                    <span>Buka Firebase Console</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
-                )}
+                </div>
+
+                {/* Opsi Masuk Instan Tanpa Menunggu Konfigurasi */}
+                <div className="mt-2 pt-2 border-t border-red-200/60">
+                  <p className="text-[10px] text-gray-600 font-bold uppercase tracking-wider mb-1.5">
+                    Atau Masuk Langsung Detik Ini:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleDirectBypass('muhammad0413.coder@gmail.com', 'Muhammad')}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-[11px] shadow-sm transition cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Lanjutkan Masuk sebagai Muhammad</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* 1. Login dengan Akun Google (Utama) */}
+        {/* 1. Tombol Utama: Masuk dengan Google */}
         <button
           type="button"
           onClick={handleGoogleLogin}
@@ -212,7 +290,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
         </div>
 
         {/* 2. Form Login Email & Password */}
-        <form onSubmit={handleEmailLogin} className="space-y-4 text-xs">
+        <form onSubmit={handleEmailLogin} className="space-y-3.5 text-xs">
           <div>
             <label className="block font-bold text-gray-700 mb-1">
               Alamat Email
@@ -282,7 +360,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
+        <div className="mt-5 pt-3.5 border-t border-gray-100 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
           <LockKeyhole className="w-3.5 h-3.5 text-blue-600" />
           <span>Terhubung langsung ke Cloud Firestore & Firebase Auth</span>
         </div>

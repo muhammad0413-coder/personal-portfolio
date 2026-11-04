@@ -141,8 +141,12 @@ export const savePersonalDocument = async (
   setCached(getCacheKey('documents', userId), list);
 
   if (isFirebaseConfigured() && db && userId) {
-    const docRef = doc(db, 'users', userId, 'documents', id);
-    await setDoc(docRef, { ...docData, id, userId }, { merge: true });
+    try {
+      const docRef = doc(db, 'users', userId, 'documents', id);
+      await setDoc(docRef, { ...docData, id, userId }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore save notice:', e);
+    }
   }
 
   return id;
@@ -153,7 +157,11 @@ export const deletePersonalDocument = async (userId: string, id: string): Promis
   setCached(getCacheKey('documents', userId), list);
 
   if (isFirebaseConfigured() && db && userId) {
-    await deleteDoc(doc(db, 'users', userId, 'documents', id));
+    try {
+      await deleteDoc(doc(db, 'users', userId, 'documents', id));
+    } catch (e) {
+      console.warn('Firestore delete notice:', e);
+    }
   }
 };
 
